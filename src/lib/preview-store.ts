@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 interface PreviewEntry {
   /** Actual e2b sandbox preview URL (never exposed to client) */
   url: string;
+  /** e2b traffic access token for authenticated proxy requests */
+  accessToken: string;
   /** Auto-expiry timestamp (ms) */
   expiresAt: number;
 }
@@ -22,22 +24,22 @@ const store =
 const TTL_MS = 5 * 60 * 1000; // 5 min — matches sandbox timeout
 
 /** Register a new preview and return the generated token. */
-export function registerPreview(e2bUrl: string): string {
+export function registerPreview(e2bUrl: string, accessToken: string): string {
   cleanup();
   const token = randomUUID();
-  store.set(token, { url: e2bUrl, expiresAt: Date.now() + TTL_MS });
+  store.set(token, { url: e2bUrl, accessToken, expiresAt: Date.now() + TTL_MS });
   return token;
 }
 
-/** Look up the real e2b URL for a given token. Returns null if invalid/expired. */
-export function resolvePreview(token: string): string | null {
+/** Look up the real e2b URL and access token for a given token. */
+export function resolvePreview(token: string): { url: string; accessToken: string } | null {
   const entry = store.get(token);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
     store.delete(token);
     return null;
   }
-  return entry.url;
+  return { url: entry.url, accessToken: entry.accessToken };
 }
 
 /** Remove expired entries to prevent unbounded growth. */

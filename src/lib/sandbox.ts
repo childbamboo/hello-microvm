@@ -3,6 +3,7 @@ import { Sandbox } from "@e2b/code-interpreter";
 export async function createSandbox() {
   const sandbox = await Sandbox.create({
     timeoutMs: 5 * 60 * 1000, // 5 min
+    network: { allowPublicTraffic: false },
   });
   return sandbox;
 }
