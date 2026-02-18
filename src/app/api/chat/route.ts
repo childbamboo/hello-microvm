@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { generatePlan } from "@/lib/agent";
 import { createSandbox, runInSandbox, getPreviewUrl, patchDevServerConfig, wrapWithAllowedHosts, PROJECT_DIR } from "@/lib/sandbox";
+import { registerPreview } from "@/lib/preview-store";
 import type { SSEEvent, TaskItem } from "@/types";
 
 function sseEncode(event: SSEEvent): string {
@@ -97,12 +98,14 @@ export async function POST(req: NextRequest) {
           send({ type: "task", task: tasks[i] });
         }
 
-        // 4. Get preview URL
+        // 4. Get preview URL (proxied through our server with token auth)
         // Wait a moment for the dev server to start
         await new Promise((resolve) => setTimeout(resolve, 3000));
-        const previewUrl = getPreviewUrl(sandbox, 3000);
+        const e2bUrl = getPreviewUrl(sandbox, 3000);
+        const token = registerPreview(e2bUrl);
+        const previewUrl = `/api/preview/${token}`;
         send({ type: "preview", url: previewUrl });
-        send({ type: "terminal", line: `$ Preview ready: ${previewUrl}` });
+        send({ type: "terminal", line: `$ Preview ready (token-protected)` });
         send({ type: "status", status: "done" });
         send({
           type: "message",
