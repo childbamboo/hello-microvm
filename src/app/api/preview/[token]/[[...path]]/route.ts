@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolvePreview } from "@/lib/preview-store";
+import { rewriteRootRelativePaths, rewriteLocation } from "@/lib/preview-rewrite";
 
 /**
  * Reverse-proxy for sandbox previews.
@@ -12,13 +13,15 @@ export async function GET(
 ) {
   const { token, path } = await params;
 
-  const baseUrl = resolvePreview(token);
-  if (!baseUrl) {
+  const preview = resolvePreview(token);
+  if (!preview) {
     return NextResponse.json(
       { error: "Invalid or expired preview token" },
       { status: 403 }
     );
   }
+
+  const { url: baseUrl, accessToken } = preview;
 
   // Reconstruct the target URL
   const subPath = path ? `/${path.join("/")}` : "";
@@ -31,6 +34,8 @@ export async function GET(
         // Forward accept headers so the upstream can content-negotiate
         accept: req.headers.get("accept") ?? "*/*",
         "accept-encoding": req.headers.get("accept-encoding") ?? "",
+        // Authenticate with e2b (allowPublicTraffic: false)
+        ...(accessToken ? { "e2b-traffic-access-token": accessToken } : {}),
       },
       // Do not follow redirects automatically — pass them through
       redirect: "manual",
@@ -89,35 +94,3 @@ export async function GET(
   }
 }
 
-/**
- * Rewrite root-relative paths (e.g. "/src/main.jsx", "/@vite/client")
- * in text responses so they route through the proxy.
- * Matches paths inside quotes or parentheses, but skips protocol-relative
- * URLs ("//...") and already-rewritten proxy paths.
- */
-function rewriteRootRelativePaths(text: string, token: string): string {
-  const proxyBase = `/api/preview/${token}`;
-  // Only rewrite paths that look like actual resource references (start with
-  // a word char or @), skipping standalone "/" and other non-path strings.
-  return text.replace(/(["'])\/(?!\/|api\/preview\/)(?=[@\w])/g, `$1${proxyBase}/`);
-}
-
-/**
- * Rewrite an upstream Location header so it stays within the proxy.
- * Absolute URLs pointing at the sandbox host are turned into proxy-relative paths.
- */
-function rewriteLocation(
-  location: string,
-  baseUrl: string,
-  token: string
-): string {
-  if (location.startsWith(baseUrl)) {
-    const relative = location.slice(baseUrl.length);
-    return `/api/preview/${token}${relative}`;
-  }
-  // Relative location — prefix with the proxy base
-  if (location.startsWith("/")) {
-    return `/api/preview/${token}${location}`;
-  }
-  return location;
-}
