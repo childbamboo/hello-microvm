@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { generatePlan } from "@/lib/agent";
-import { createSandbox, runInSandbox, getPreviewUrl } from "@/lib/sandbox";
+import { createSandbox, runInSandbox, getPreviewUrl, patchDevServerConfig, wrapWithAllowedHosts, PROJECT_DIR } from "@/lib/sandbox";
 import type { SSEEvent, TaskItem } from "@/types";
 
 function sseEncode(event: SSEEvent): string {
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(sseEncode(event)));
       };
 
+      let sandbox: Awaited<ReturnType<typeof createSandbox>> | null = null;
       try {
         // 1. Generate development plan via LLM
         send({ type: "status", status: "starting" });
@@ -41,7 +42,8 @@ export async function POST(req: NextRequest) {
         // 2. Create sandbox
         send({ type: "terminal", line: "$ Creating microVM sandbox..." });
         send({ type: "status", status: "running" });
-        const sandbox = await createSandbox();
+        sandbox = await createSandbox();
+        await sandbox.commands.run(`mkdir -p ${PROJECT_DIR}`);
         send({
           type: "terminal",
           line: `$ Sandbox created: ${sandbox.sandboxId}`,
@@ -57,8 +59,18 @@ export async function POST(req: NextRequest) {
           const isLastTask = i === plan.tasks.length - 1;
 
           if (isLastTask) {
-            // Last task is the dev server — run in background
-            await sandbox.commands.run(task.command, { background: true });
+            // Patch config: allowedHosts: true + host: '0.0.0.0'
+            const patchLogs = await patchDevServerConfig(sandbox);
+            for (const log of patchLogs) {
+              send({ type: "terminal", line: log });
+            }
+            // Start dev server with env var prefix for additional safety
+            const wrappedCmd = wrapWithAllowedHosts(task.command);
+            send({ type: "terminal", line: `$ ${wrappedCmd}` });
+            await sandbox.commands.run(wrappedCmd, {
+              background: true,
+              cwd: PROJECT_DIR,
+            });
             send({ type: "terminal", line: "(running in background)" });
           } else {
             const result = await runInSandbox(
@@ -103,6 +115,11 @@ export async function POST(req: NextRequest) {
             error instanceof Error ? error.message : "Unknown error occurred",
         });
         send({ type: "status", status: "error" });
+        // Clean up sandbox on error only; successful sandboxes stay alive
+        // for preview access until the timeout (5 min) expires
+        if (sandbox) {
+          sandbox.kill().catch(() => {});
+        }
       } finally {
         controller.close();
       }
