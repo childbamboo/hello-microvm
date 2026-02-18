@@ -51,22 +51,42 @@ export async function patchDevServerConfig(sandbox: Sandbox): Promise<string[]> 
     logs.push(`[patch] Found ${f}`);
     let content = await sandbox.files.read(filePath, { format: "text" });
 
-    // Ensure allowedHosts: true
-    if (!content.includes("allowedHosts")) {
+    // Fix invalid allowedHosts values (e.g. "all" → true)
+    if (/allowedHosts\s*:\s*["']all["']/.test(content)) {
       content = content.replace(
-        /server\s*:\s*\{/,
-        "server: {\n      allowedHosts: true,"
+        /allowedHosts\s*:\s*["']all["']/,
+        "allowedHosts: true"
       );
-      logs.push("[patch] Added allowedHosts: true");
+      logs.push("[patch] Fixed allowedHosts: 'all' → true");
     }
 
-    // Ensure host: '0.0.0.0'
-    if (!content.includes("host:") && !content.includes("host :")) {
-      content = content.replace(
-        /server\s*:\s*\{/,
-        "server: {\n      host: '0.0.0.0',"
+    // If no server block exists, add one inside defineConfig
+    if (!/server\s*:\s*\{/.test(content)) {
+      const replaced = content.replace(
+        /defineConfig\s*\(\s*\{/,
+        "defineConfig({\n    server: { allowedHosts: true, host: '0.0.0.0' },"
       );
-      logs.push("[patch] Added host: '0.0.0.0'");
+      if (replaced !== content) {
+        content = replaced;
+        logs.push("[patch] Added server block with allowedHosts + host");
+      }
+    } else {
+      // Existing server block — inject missing properties
+      if (!content.includes("allowedHosts")) {
+        content = content.replace(
+          /server\s*:\s*\{/,
+          "server: {\n      allowedHosts: true,"
+        );
+        logs.push("[patch] Added allowedHosts: true");
+      }
+
+      if (!content.includes("host:") && !content.includes("host :")) {
+        content = content.replace(
+          /server\s*:\s*\{/,
+          "server: {\n      host: '0.0.0.0',"
+        );
+        logs.push("[patch] Added host: '0.0.0.0'");
+      }
     }
 
     await sandbox.files.write(filePath, content);
