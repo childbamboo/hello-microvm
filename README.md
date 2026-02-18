@@ -15,7 +15,7 @@ Browser
   │    (status, terminal, task, preview, message, error)
   │
   ├─ Status Panel ─── terminal logs + task progress
-  └─ Preview Panel ── iframe → https://{port}-{sandboxId}.e2b.app
+  └─ Preview Panel ── iframe → /api/preview/{token}/...
 ```
 
 ### Flow
@@ -25,7 +25,7 @@ Browser
 3. e2b sandbox（Firecracker microVM）を起動
 4. コマンドを順次実行（scaffolding → install → code generation → dev server）
 5. dev server 起動前に Vite config を自動パッチ（`allowedHosts: true`, `host: 0.0.0.0`）
-6. プレビュー URL を iframe に表示
+6. プレビュー URL をトークン化し、リバースプロキシ（`/api/preview/{token}/...`）経由で iframe に表示（e2b ホスト名をクライアントに公開しない）
 7. 進捗は SSE でリアルタイム配信
 
 ## Tech Stack
@@ -36,6 +36,7 @@ Browser
 | API | Next.js Route Handler (SSE streaming) |
 | AI | Anthropic Claude API (`@anthropic-ai/sdk`) |
 | Sandbox | e2b Code Interpreter (`@e2b/code-interpreter`) |
+| Test | Vitest |
 
 ## Setup
 
@@ -58,9 +59,11 @@ API キーの取得先:
 ## Development
 
 ```bash
-npm run dev     # http://localhost:3000
-npm run build   # Production build
-npm run lint    # ESLint
+npm run dev        # http://localhost:3000
+npm run build      # Production build
+npm run lint       # ESLint
+npm test           # Unit tests (Vitest)
+npm run test:watch # Watch mode
 ```
 
 ## Project Structure
@@ -68,7 +71,9 @@ npm run lint    # ESLint
 ```
 src/
 ├── app/
-│   ├── api/chat/route.ts   # SSE endpoint: plan → sandbox → execute → preview
+│   ├── api/
+│   │   ├── chat/route.ts                       # SSE endpoint: plan → sandbox → execute → preview
+│   │   └── preview/[token]/[[...path]]/route.ts # Reverse proxy for sandbox previews
 │   ├── page.tsx             # Main UI (3-panel layout)
 │   ├── layout.tsx           # Root layout
 │   └── globals.css          # Global styles (Tailwind)
@@ -78,7 +83,9 @@ src/
 │   └── PreviewPanel.tsx     # iframe preview
 ├── lib/
 │   ├── agent.ts             # Claude API integration (plan generation)
-│   └── sandbox.ts           # e2b sandbox management & config patching
+│   ├── sandbox.ts           # e2b sandbox management & config patching
+│   ├── preview-store.ts     # In-memory token → e2b URL mapping (TTL-based)
+│   └── preview-rewrite.ts   # URL rewriting for preview proxy
 └── types.ts                 # Shared type definitions (SSEEvent, TaskItem, etc.)
 
 docs/
