@@ -7,8 +7,17 @@ interface PreviewEntry {
   expiresAt: number;
 }
 
-/** In-memory token → e2b URL mapping. Tokens expire with the sandbox (5 min). */
-const store = new Map<string, PreviewEntry>();
+/**
+ * In-memory token → e2b URL mapping. Tokens expire with the sandbox (5 min).
+ * Stored on globalThis so the Map survives HMR re-evaluation in Next.js dev mode
+ * and stays shared across all route handlers.
+ */
+const globalForPreview = globalThis as unknown as {
+  __previewStore: Map<string, PreviewEntry>;
+};
+const store =
+  globalForPreview.__previewStore ??
+  (globalForPreview.__previewStore = new Map<string, PreviewEntry>());
 
 const TTL_MS = 5 * 60 * 1000; // 5 min — matches sandbox timeout
 
