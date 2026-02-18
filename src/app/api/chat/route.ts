@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         // Wait a moment for the dev server to start
         await new Promise((resolve) => setTimeout(resolve, 3000));
         const e2bUrl = getPreviewUrl(sandbox, 3000);
-        const token = registerPreview(e2bUrl);
+        const token = registerPreview(e2bUrl, sandbox.trafficAccessToken ?? "");
         const previewUrl = `/api/preview/${token}`;
         send({ type: "preview", url: previewUrl });
         send({ type: "terminal", line: `$ Preview ready (token-protected)` });

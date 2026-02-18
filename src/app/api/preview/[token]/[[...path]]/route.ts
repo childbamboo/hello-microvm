@@ -12,13 +12,15 @@ export async function GET(
 ) {
   const { token, path } = await params;
 
-  const baseUrl = resolvePreview(token);
-  if (!baseUrl) {
+  const preview = resolvePreview(token);
+  if (!preview) {
     return NextResponse.json(
       { error: "Invalid or expired preview token" },
       { status: 403 }
     );
   }
+
+  const { url: baseUrl, accessToken } = preview;
 
   // Reconstruct the target URL
   const subPath = path ? `/${path.join("/")}` : "";
@@ -31,6 +33,8 @@ export async function GET(
         // Forward accept headers so the upstream can content-negotiate
         accept: req.headers.get("accept") ?? "*/*",
         "accept-encoding": req.headers.get("accept-encoding") ?? "",
+        // Authenticate with e2b (allowPublicTraffic: false)
+        ...(accessToken ? { "e2b-traffic-access-token": accessToken } : {}),
       },
       // Do not follow redirects automatically — pass them through
       redirect: "manual",
