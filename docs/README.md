@@ -14,7 +14,6 @@ hello-microvm プロジェクトの設計ドキュメントです。
 ```
 docs/
 ├── README.md          # 本ファイル（設計書の目次）
-├── architecture.md    # アーキテクチャ設計
-├── api.md             # API 設計
-└── data-model.md      # データモデル設計
+├── requirements.md    # 開発要件
+└── multi-tenant.md    # マルチテナント設計（別フェーズ）
 ```
